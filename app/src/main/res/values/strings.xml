@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Foreground Service Sample</string>
+    <string name="peripheral_device_service_name">Peripheral Device Service</string>
+</resources>
