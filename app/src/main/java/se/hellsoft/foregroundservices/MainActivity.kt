@@ -8,13 +8,19 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.companion.*
 import android.content.Intent
+import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.os.ParcelUuid
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.ManagedActivityResultLauncher
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,18 +28,30 @@ import androidx.compose.material.Button
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
+import se.hellsoft.foregroundservices.peripherals.BackgroundScanPeripheralService
 import se.hellsoft.foregroundservices.peripherals.ScanReceiver
 import se.hellsoft.foregroundservices.ui.theme.ForegroundServiceSampleTheme
 import java.util.*
 
 class MainActivity : ComponentActivity() {
+    private lateinit var launcher: ManagedActivityResultLauncher<IntentSenderRequest, ActivityResult>
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         setContent {
             ForegroundServiceSampleTheme {
+                val contract = ActivityResultContracts.StartIntentSenderForResult()
+                launcher = rememberLauncherForActivityResult(contract) {
+                    if (it.resultCode == RESULT_OK) {
+                        startBackgroundScanning()
+                    }
+                }
+
                 // A surface container using the 'background' color from the theme
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -45,6 +63,9 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Button(onClick = { startBackgroundScanning() }) {
                             Text(text = "Peripheral Device Service")
+                        }
+                        Button(onClick = { makeCdmAssociation() }) {
+                            Text(text = "CDM Association")
                         }
                     }
                 }
@@ -61,6 +82,45 @@ class MainActivity : ComponentActivity() {
         if (requestCode == 1001) {
             startBackgroundScanning()
         }
+    }
+
+    fun makeCdmAssociation() {
+        val address = "18:04:ED:BE:B6:0C"
+        val cdm = getSystemService(CompanionDeviceManager::class.java)
+        val scanFilter = ScanFilter.Builder()
+            .setDeviceAddress(address)
+//            .setServiceUuid(ParcelUuid(uuid))
+//            .setDeviceName("Multi-Sensor")
+            .build()
+
+        val associationRequest = AssociationRequest.Builder()
+            .addDeviceFilter(
+                BluetoothLeDeviceFilter.Builder()
+                    .setScanFilter(scanFilter)
+                    .build()
+            )
+            .build()
+        val cdmCallback = object : CompanionDeviceManager.Callback() {
+            override fun onDeviceFound(intentSender: IntentSender) {
+                super.onDeviceFound(intentSender)
+            }
+
+            override fun onAssociationPending(intentSender: IntentSender) {
+                super.onAssociationPending(intentSender)
+                launcher.launch(
+                    IntentSenderRequest.Builder(intentSender).build()
+                )
+            }
+
+            override fun onAssociationCreated(associationInfo: AssociationInfo) {
+                super.onAssociationCreated(associationInfo)
+            }
+
+            override fun onFailure(error: CharSequence?) {
+
+            }
+        }
+        cdm.associate(associationRequest, cdmCallback, null)
     }
 
     @SuppressLint("InlinedApi")
@@ -115,14 +175,20 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val pendingIntent = PendingIntent.getBroadcast(
+        val broadcastIntent = PendingIntent.getBroadcast(
+            applicationContext,
+            2002,
+            Intent(applicationContext, ScanReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val foregroundServiceIntent = PendingIntent.getForegroundService(
             applicationContext,
             2002,
             Intent(applicationContext, ScanReceiver::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         adapter.bluetoothLeScanner.flushPendingScanResults(callback)
-        adapter.bluetoothLeScanner.stopScan(pendingIntent)
+        adapter.bluetoothLeScanner.stopScan(broadcastIntent)
         adapter.bluetoothLeScanner.startScan(
             listOf(scanFilter),
             ScanSettings.Builder()
@@ -130,8 +196,9 @@ class MainActivity : ComponentActivity() {
 //                .setLegacy(true)
                 .setCallbackType(ScanSettings.CALLBACK_TYPE_FIRST_MATCH)
                 .build(),
-            pendingIntent
+            broadcastIntent
         )
+        BackgroundScanPeripheralService.start(applicationContext)
     }
 
     companion object {
