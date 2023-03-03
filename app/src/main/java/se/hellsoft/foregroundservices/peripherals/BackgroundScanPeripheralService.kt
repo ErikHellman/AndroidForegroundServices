@@ -1,10 +1,12 @@
 package se.hellsoft.foregroundservices.peripherals
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
@@ -12,6 +14,7 @@ import android.util.Log
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 
 class BackgroundScanPeripheralService : Service() {
 
@@ -75,7 +78,11 @@ class BackgroundScanPeripheralService : Service() {
         }
 
         fun start(context: Context) {
-            context.startForegroundService(Intent(context, BackgroundScanPeripheralService::class.java).also { it.action = ACTION_START })
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.FOREGROUND_SERVICE) == PackageManager.PERMISSION_GRANTED) {
+                context.startForegroundService(Intent(context, BackgroundScanPeripheralService::class.java).also { it.action = ACTION_START })
+            } else {
+                Log.d(TAG, "start: Not allow to start foreground service!")
+            }
         }
     }
 }
