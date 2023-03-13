@@ -10,18 +10,16 @@ import android.util.Log
 
 class ScanReceiver : BroadcastReceiver() {
     @SuppressLint("MissingPermission")
-    override fun onReceive(context: Context?, intent: Intent?) {
+    override fun onReceive(context: Context, intent: Intent?) {
         Log.d(TAG, "onReceive: $intent")
         val results: List<ScanResult>? = intent?.getParcelableArrayListExtra(BluetoothLeScanner.EXTRA_LIST_SCAN_RESULT)
-        results?.forEach {
-            Log.d(TAG, "onReceive result: ${it.device.name}")
-        }
-        if (context != null) {
-            BackgroundScanPeripheralService.start(context)
+        results?.firstOrNull()?.let {
+            LegacyCompanionService.start(context, it.device)
         }
     }
 
     companion object {
         private const val TAG = "ScanReceiver"
+        internal const val REQUEST_CODE = 2002
     }
 }

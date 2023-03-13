@@ -11,7 +11,7 @@ import android.bluetooth.le.ScanSettings
 import android.companion.*
 import android.content.Intent
 import android.content.IntentSender
-import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -28,15 +28,15 @@ import androidx.compose.material.Button
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.core.app.ActivityCompat
-import se.hellsoft.foregroundservices.peripherals.BackgroundScanPeripheralService
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import se.hellsoft.foregroundservices.peripherals.ScanReceiver
 import se.hellsoft.foregroundservices.ui.theme.ForegroundServiceSampleTheme
 import java.util.*
 
+@OptIn(ExperimentalPermissionsApi::class)
 class MainActivity : ComponentActivity() {
     private lateinit var launcher: ManagedActivityResultLauncher<IntentSenderRequest, ActivityResult>
 
@@ -52,6 +52,24 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+
+                val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    listOf(
+                        Manifest.permission.BLUETOOTH_SCAN,
+                        Manifest.permission.BLUETOOTH_CONNECT,
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                } else {
+                    listOf(
+                        Manifest.permission.BLUETOOTH,
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                }
+
+                val permissionsState = rememberMultiplePermissionsState(permissions = permissions)
+
                 // A surface container using the 'background' color from the theme
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -61,26 +79,19 @@ class MainActivity : ComponentActivity() {
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Button(onClick = { startBackgroundScanning() }) {
-                            Text(text = "Peripheral Device Service")
+                        if (!permissionsState.allPermissionsGranted) {
+                            Button(onClick = { permissionsState.launchMultiplePermissionRequest() }) {
+                                Text(text = "Grant required permissions")
+                            }
+                        } else {
+                            Button(onClick = { makeCdmAssociation() }) {
+                                Text(text = "Companion Device Pairing & Scanning")
+                            }
                         }
-                        Button(onClick = { makeCdmAssociation() }) {
-                            Text(text = "CDM Association")
-                        }
+
                     }
                 }
             }
-        }
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 1001) {
-            startBackgroundScanning()
         }
     }
 
@@ -103,6 +114,7 @@ class MainActivity : ComponentActivity() {
         val cdmCallback = object : CompanionDeviceManager.Callback() {
             override fun onDeviceFound(intentSender: IntentSender) {
                 super.onDeviceFound(intentSender)
+                launcher.launch(IntentSenderRequest.Builder(intentSender).build())
             }
 
             override fun onAssociationPending(intentSender: IntentSender) {
@@ -117,32 +129,14 @@ class MainActivity : ComponentActivity() {
             }
 
             override fun onFailure(error: CharSequence?) {
-
+                Log.e(TAG, "onFailure: error performing CDM pairing: $error")
             }
         }
         cdm.associate(associationRequest, cdmCallback, null)
     }
 
-    @SuppressLint("InlinedApi")
+    @SuppressLint("InlinedApi", "MissingPermission")
     private fun startBackgroundScanning() {
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.BLUETOOTH_SCAN
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(
-                    Manifest.permission.BLUETOOTH_SCAN,
-                    Manifest.permission.BLUETOOTH_CONNECT,
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                ),
-                1001
-            )
-            return
-        }
-
         val address = "18:04:ED:BE:B6:0C"
         val bluetoothManager = getSystemService(BluetoothManager::class.java)
         val adapter = bluetoothManager.adapter
@@ -177,13 +171,13 @@ class MainActivity : ComponentActivity() {
 
         val broadcastIntent = PendingIntent.getBroadcast(
             applicationContext,
-            2002,
+            ScanReceiver.REQUEST_CODE,
             Intent(applicationContext, ScanReceiver::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val foregroundServiceIntent = PendingIntent.getForegroundService(
             applicationContext,
-            2002,
+            ScanReceiver.REQUEST_CODE,
             Intent(applicationContext, ScanReceiver::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -193,12 +187,10 @@ class MainActivity : ComponentActivity() {
             listOf(scanFilter),
             ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-//                .setLegacy(true)
                 .setCallbackType(ScanSettings.CALLBACK_TYPE_FIRST_MATCH)
                 .build(),
             broadcastIntent
         )
-        BackgroundScanPeripheralService.start(applicationContext)
     }
 
     companion object {

@@ -1,24 +1,23 @@
 package se.hellsoft.foregroundservices.peripherals
 
-import android.Manifest
 import android.app.Notification
 import android.app.NotificationManager
-import android.app.Service
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.companion.AssociationInfo
+import android.companion.CompanionDeviceService
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
-import android.os.IBinder
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 
-class BackgroundScanPeripheralService : Service() {
-
-    override fun onBind(intent: Intent?): IBinder? = null
+@RequiresApi(Build.VERSION_CODES.S)
+class ModernCompanionService : CompanionDeviceService() {
 
     override fun onCreate() {
         super.onCreate()
@@ -46,11 +45,48 @@ class BackgroundScanPeripheralService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        return START_STICKY
+        intent?.getParcelableExtra<BluetoothDevice>(EXTRA_DEVICE)?.let {
+            // TODO Connect to the device
+            Log.d(TAG, "onStartCommand: Connect to ${it.address}")
+        }
+
+        return START_REDELIVER_INTENT
+    }
+
+    override fun onDeviceAppeared(address: String) {
+        super.onDeviceAppeared(address)
+        Log.d(TAG, "onDeviceAppeared: $address")
+        val bluetoothManager = getSystemService(BluetoothManager::class.java)
+        val device = bluetoothManager.adapter.getRemoteDevice(address)
+        start(applicationContext, device)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    override fun onDeviceAppeared(associationInfo: AssociationInfo) {
+        super.onDeviceAppeared(associationInfo)
+        Log.d(TAG, "onDeviceAppeared: $associationInfo")
+        val bluetoothManager = getSystemService(BluetoothManager::class.java)
+        val address = associationInfo.deviceMacAddress!!.toOuiString()
+        val device = bluetoothManager.adapter.getRemoteDevice(address)
+        start(applicationContext, device)
+    }
+
+    override fun onDeviceDisappeared(address: String) {
+        super.onDeviceDisappeared(address)
+        Log.d(TAG, "onDeviceDisappeared: $address")
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    override fun onDeviceDisappeared(associationInfo: AssociationInfo) {
+        super.onDeviceDisappeared(associationInfo)
+        Log.d(TAG, "onDeviceDisappeared: $associationInfo")
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     companion object {
-        private const val TAG = "SampleLegacyCompanionService"
+        private const val TAG = "SampleCompanionService"
         private const val NOTIFICATION_ID = 1234
         private const val NOTIFICATION_CHANNEL_ID = "peripheral_device_service"
         private const val CHANNEL_NAME = "Peripheral Device"
@@ -60,6 +96,7 @@ class BackgroundScanPeripheralService : Service() {
         private const val DEFAULT_NOTIFICATION_DESCRIPTION =
             "This service tracks the connection to your peripheral device"
         private const val ACTION_START = "se.hellsoft.foregroundservices.peripherals.START_SERVICE"
+        private const val EXTRA_DEVICE = "device"
 
         private fun createNotificationChannel(context: Context) {
             val channel = NotificationChannelCompat
@@ -77,12 +114,12 @@ class BackgroundScanPeripheralService : Service() {
                 .build()
         }
 
-        fun start(context: Context) {
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.FOREGROUND_SERVICE) == PackageManager.PERMISSION_GRANTED) {
-                context.startForegroundService(Intent(context, BackgroundScanPeripheralService::class.java).also { it.action = ACTION_START })
-            } else {
-                Log.d(TAG, "start: Not allow to start foreground service!")
+        fun start(context: Context, device: BluetoothDevice) {
+            val intent = Intent(context, ModernCompanionService::class.java)?.also {
+                it.action = ACTION_START
+                it.putExtra(EXTRA_DEVICE, device)
             }
+            context.startForegroundService(intent)
         }
     }
 }

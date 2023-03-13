@@ -11,6 +11,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.REQUEST_COMPANION_RUN_IN_BACKGROUND" />
+    <uses-permission android:name="android.permission.REQUEST_COMPANION_USE_DATA_IN_BACKGROUND" />
     <uses-permission android:name="android.permission.REQUEST_OBSERVE_COMPANION_DEVICE_PRESENCE" />
 
     <application
@@ -34,9 +35,10 @@
         </activity>
 
         <service
-            android:name=".peripherals.SampleCompanionService"
+            android:name=".peripherals.ModernCompanionService"
+            android:enabled="@bool/enable_cdm_service"
             android:exported="true"
-            android:foregroundServiceType="connectedDevice"
+            android:foregroundServiceType="connectedDevice|"
             android:label="@string/peripheral_device_service_name"
             android:permission="android.permission.BIND_COMPANION_DEVICE_SERVICE">
             <intent-filter>
@@ -45,7 +47,8 @@
         </service>
 
         <service
-            android:name=".peripherals.BackgroundScanPeripheralService"
+            android:name=".peripherals.LegacyCompanionService"
+            android:enabled="@bool/enable_legacy_service"
             android:exported="true"
             android:foregroundServiceType="connectedDevice"
             android:label="@string/peripheral_device_service_name">
@@ -54,7 +57,9 @@
             </intent-filter>
         </service>
 
-        <receiver android:name=".peripherals.ScanReceiver" android:exported="true" />
+        <receiver
+            android:name=".peripherals.ScanReceiver"
+            android:exported="true" />
     </application>
 
 </manifest>
